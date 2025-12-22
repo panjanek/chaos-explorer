@@ -10,6 +10,8 @@ struct ShaderConfig
     int particlesCount;
     float dt;
     float t;
+    int fractalWidth;
+    int fractalHeight;
 };
 
 struct Particle
@@ -30,6 +32,8 @@ layout(std430, binding = 1) buffer OutputBuffer {
     Particle particles[];
 };
 
+layout(rgba32f, binding = 2) uniform image2D uStateImage;
+
 vec3 lorenz(vec3 pos)
 {
     float a = 10;
@@ -44,6 +48,9 @@ void update_one(uint idx)
 {
     particles[idx].color = vec4(1,0.5,0.0,1.0);
     particles[idx].position = lorenz(particles[idx].position);
+
+    vec4 color = particles[idx].position.x < 0 ? vec4(1,0,0,1) : vec4(0,1,0,1);
+    imageStore(uStateImage, particles[idx].pixel, color); 
 }
 
 void main()

@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace ChaosExplorer.Models
 {
-    [StructLayout(LayoutKind.Explicit, Size = 16)]
+    [StructLayout(LayoutKind.Explicit, Size = 24)]
     public struct ShaderConfig
     {
         [FieldOffset(0)] public int attractor;
@@ -17,5 +17,9 @@ namespace ChaosExplorer.Models
         [FieldOffset(8)] public float dt;
 
         [FieldOffset(12)] public float t;
+
+        [FieldOffset(16)] public int fractalWidth;
+
+        [FieldOffset(20)] public int fractalHeight;
     }
 }

@@ -27,8 +27,6 @@ namespace ChaosExplorer.Gpu
 
         public bool Paused;
 
-        public bool PlotFullscreen;
-
         private Panel placeholder;
 
         private WindowsFormsHost host;
@@ -51,9 +49,21 @@ namespace ChaosExplorer.Gpu
 
         private int attractorProgram;
 
+        private int fractalProgram;
+
         private int projLocation;
 
+        private int fractalStateLocation;
+
+        private int fractalOffsetLocation;
+
+        private int fractalSizeLocation;
+
         private int dummyVao;
+
+        private int stateTex;
+
+        private int fboA;
 
         private Vector2 center = new Vector2(0,0);
 
@@ -102,7 +112,8 @@ namespace ChaosExplorer.Gpu
             GL.GenVertexArrays(1, out dummyVao);
             GL.BindVertexArray(dummyVao);
 
-            ResetParticlesBuffer();
+            //create particles and testure buffers
+            ResetBuffers();
 
             GL.Viewport(0, 0, glControl.Width, glControl.Height);
             glControl.Invalidate();
@@ -112,24 +123,39 @@ namespace ChaosExplorer.Gpu
             projLocation = GL.GetUniformLocation(attractorProgram, "projection");
             if (projLocation == -1) throw new Exception("Uniform 'projection' not found. Shader optimized it out?");
 
+            fractalProgram = ShaderUtil.CompileAndLinkRenderShader("fractal.vert", "fractal.frag");
+            fractalStateLocation = GL.GetUniformLocation(fractalProgram, "uState");
+            if (fractalStateLocation == -1) throw new Exception("Uniform 'uState' not found. Shader optimized it out?");
+            fractalOffsetLocation = GL.GetUniformLocation(fractalProgram, "offset");
+            if (fractalOffsetLocation == -1) throw new Exception("Uniform 'offset' not found. Shader optimized it out?");
+            fractalSizeLocation = GL.GetUniformLocation(fractalProgram, "size");
+            if (fractalSizeLocation == -1) throw new Exception("Uniform 'size' not found. Shader optimized it out?");
+
             placeholder.SizeChanged += Placeholder_SizeChanged;
         }
 
-        private void ResetParticlesBuffer()
+        private void ResetBuffers()
         {
             if (particlesCount != simulation.shaderConfig.particlesCount)
             {
                 // create buffer for points data
                 if (particlesBuffer > 0)
-                {
                     GL.DeleteBuffer(particlesBuffer);
-                    particlesBuffer = 0;
-                }
                 GL.GenBuffers(1, out particlesBuffer);
                 GL.BindBuffer(BufferTarget.ShaderStorageBuffer, particlesBuffer);
                 particlesCount = simulation.shaderConfig.particlesCount;
                 GL.BufferData(BufferTarget.ShaderStorageBuffer, particlesCount * Marshal.SizeOf<Particle>(), IntPtr.Zero, BufferUsageHint.DynamicDraw);
                 GL.BindBufferBase(BufferRangeTarget.ShaderStorageBuffer, 1, particlesBuffer);
+
+                if (stateTex > 0)
+                    GL.DeleteTexture(stateTex);
+                stateTex = TextureUtil.CreateStateTexture(simulation.shaderConfig.fractalWidth, simulation.shaderConfig.fractalHeight);
+                float[] initialState = new float[simulation.shaderConfig.fractalWidth * simulation.shaderConfig.fractalHeight * 4]; //upload initial texture - empty
+                GL.BindTexture(TextureTarget.Texture2D, stateTex);
+                GL.TexSubImage2D(TextureTarget.Texture2D, 0, 0, 0, simulation.shaderConfig.fractalWidth, simulation.shaderConfig.fractalHeight, PixelFormat.Rgba, PixelType.Float, initialState);
+                fboA = TextureUtil.CreateFboForTexture(stateTex);
+                GL.ClearColor(0f, 0f, 0f, 0f);
+                GL.Clear(ClearBufferMask.ColorBufferBit);
             }
 
             //upload initial data
@@ -165,18 +191,16 @@ namespace ChaosExplorer.Gpu
             GL.DrawArrays(PrimitiveType.Points, 0, particlesCount);
 
             // draw plot from texture
-            /*
             GL.Disable(EnableCap.DepthTest);
             GL.Disable(EnableCap.Blend);
-            GL.UseProgram(plotProgram);
+            GL.UseProgram(fractalProgram);
             GL.ActiveTexture(TextureUnit.Texture0);
-            GL.BindTexture(TextureTarget.Texture2D, plotTexFront);
-            GL.Uniform1(plotTexLocation, 0);
-            GL.Uniform2(plotOffsetLocation, new Vector2(0.0f, 0.0f));
-            var plotSize = PlotFullscreen ? new Vector2(1.0f, 1.0f) : new Vector2(0.3f, 0.3f);
-            GL.Uniform2(plotSizeLocation, plotSize);
+            GL.BindTexture(TextureTarget.Texture2D, stateTex);
+            GL.Uniform1(fractalStateLocation, 0);
+            GL.Uniform2(fractalOffsetLocation, new Vector2(0.0f, 0.0f));
+            var plotSize = new Vector2(0.3f, 0.3f);
+            GL.Uniform2(fractalSizeLocation, plotSize);
             GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
-            */
 
             glControl.SwapBuffers();
             frameCounter++;
@@ -191,7 +215,7 @@ namespace ChaosExplorer.Gpu
             lock (simulation)
             {
                 if (particlesCount == 0 || particlesCount != simulation.shaderConfig.particlesCount)
-                    ResetParticlesBuffer();
+                    ResetBuffers();
 
                 //upload config
                 simulation.shaderConfig.t += simulation.shaderConfig.dt;
@@ -209,12 +233,12 @@ namespace ChaosExplorer.Gpu
             if (!Paused)
             {
                 GL.UseProgram(computeProgram);
-                //GL.BindImageTexture(2, plotTexBack, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.R32ui);
+                GL.BindImageTexture(2, stateTex, 0, false, 0, TextureAccess.ReadWrite, SizedInternalFormat.Rgba32f);
                 int dispatchGroupsX = (particlesCount + ShaderUtil.LocalSizeX - 1) / ShaderUtil.LocalSizeX;
                 if (dispatchGroupsX > maxGroupsX)
                     dispatchGroupsX = maxGroupsX;
                 GL.DispatchCompute(dispatchGroupsX, 1, 1);
-                GL.MemoryBarrier(MemoryBarrierFlags.ShaderStorageBarrierBit);//| MemoryBarrierFlags.ShaderImageAccessBarrierBit);
+                GL.MemoryBarrier(MemoryBarrierFlags.ShaderStorageBarrierBit | MemoryBarrierFlags.ShaderImageAccessBarrierBit);//| MemoryBarrierFlags.ShaderImageAccessBarrierBit);
                 //GL.CopyImageSubData(plotTexBack, ImageTarget.Texture2D, 0, 0, 0, 0, plotTexFront, ImageTarget.Texture2D, 0, 0, 0, 0, scene.shaderConfig.plotWidth, scene.shaderConfig.plotHeight, 1);
             }
 
