@@ -34,6 +34,10 @@ layout(std430, binding = 1) buffer OutputBuffer {
 
 layout(rgba32f, binding = 2) uniform image2D uStateImage;
 
+const float M_PI        = 3.14159265358979323846;
+const float CONSTANT_G  = 0.1;
+
+
 void lorenz(uint idx)
 {
     vec3 pos = particles[idx].position;
@@ -47,11 +51,58 @@ void lorenz(uint idx)
     particles[idx].position = res;
 }
 
+void gravity(uint idx)
+{
+    vec3 planets[3] = vec3[](vec3( 20.0,  0.0,  0.0),  vec3(-20.0,  0.0,  0.0), vec3(5,  15.0,  0.0));
+    int planetsCount = 3;
+
+    vec3 pos = particles[idx].position;
+    vec3 vel = particles[idx].velocity;
+
+    vec3 acc = vec3(0.0);
+
+    // accumulate acceleration
+    for (int i = 0; i < planetsCount; i++)
+    {
+        vec3 d = planets[i] - pos;
+        float r2 = dot(d, d) + 0.1;
+        float invR = inversesqrt(r2);
+        float invR3 = invR * invR * invR;
+        acc += 5 * d * invR3;
+    }
+
+    acc *= CONSTANT_G;
+
+    // --- clamp acceleration (squared) ---
+    float acc2 = dot(acc, acc);
+    float maxAcc2 = 10000;
+    acc *= inversesqrt(max(acc2, maxAcc2)) * 100;
+
+    // integrate velocity
+    vel += acc * config.dt;
+
+    // --- clamp velocity (squared) ---
+    float vel2 = dot(vel, vel);
+    float maxVel2 = 10000;
+    vel *= inversesqrt(max(vel2, maxVel2)) * 100;
+
+    //float damping = exp(-0.01 * config.dt);
+    vel -= vel * 0.001 * config.dt;
+
+    // integrate position
+    pos += vel * config.dt;
+
+    // write back once
+    particles[idx].position = pos;
+    particles[idx].velocity = vel;
+
+}
+
 void update_one(uint idx)
 {
-    particles[idx].color = vec4(1,0.5,0.0,1.0);
-    lorenz(idx);
-    //articles[idx].position = lorenz(particles[idx].position);
+    particles[idx].color = vec4(1,1,1,1.0);
+    gravity(idx);
+
 
     vec4 color = particles[idx].position.x < 0 ? vec4(1,0,0,1) : vec4(0,1,0,1);
     imageStore(uStateImage, particles[idx].pixel, color); 
