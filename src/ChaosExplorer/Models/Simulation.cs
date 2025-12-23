@@ -20,10 +20,10 @@ namespace ChaosExplorer.Models
             shaderConfig.attractor = 0;
             
             shaderConfig.t = 0;
-            shaderConfig.dt = 0.01f;
+            shaderConfig.dt = 0.001f;
 
-            shaderConfig.fractalWidth = 1920 / 4;
-            shaderConfig.fractalHeight = 1040 / 4;
+            shaderConfig.fractalWidth = 1920 / 1;
+            shaderConfig.fractalHeight = 1040 / 1;
             SetupParticles();
         }
 
@@ -38,7 +38,7 @@ namespace ChaosExplorer.Models
                     int idx = py * shaderConfig.fractalWidth + px;
                     float x = 0.5f * (px - shaderConfig.fractalWidth / 2);
                     float y = 1;
-                    float z = 0.5f * (py - shaderConfig.fractalHeight / 2);
+                    float z = 0.3f * (py - shaderConfig.fractalHeight / 2);
                     particles[idx].position = new Vector3(x, y, z);
                     particles[idx].pixel = new Vector2i(px, py);
                 }

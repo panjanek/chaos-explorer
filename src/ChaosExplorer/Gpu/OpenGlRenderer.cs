@@ -6,7 +6,6 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Forms;
 using System.Windows.Forms.Integration;
 using ChaosExplorer.Models;
 using OpenTK.GLControl;
@@ -26,6 +25,8 @@ namespace ChaosExplorer.Gpu
         public int FrameCounter => frameCounter;
 
         public bool Paused;
+
+        public bool ShowFractalOnly;
 
         private Panel placeholder;
 
@@ -132,6 +133,18 @@ namespace ChaosExplorer.Gpu
             if (fractalSizeLocation == -1) throw new Exception("Uniform 'size' not found. Shader optimized it out?");
 
             placeholder.SizeChanged += Placeholder_SizeChanged;
+            placeholder.KeyDown += Placeholder_KeyDown;
+        }
+
+        private void Placeholder_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            switch (e.Key)
+            {
+                case System.Windows.Input.Key.M:
+                    ShowFractalOnly = !ShowFractalOnly;
+                    break;
+
+            }
         }
 
         private void ResetBuffers()
@@ -178,17 +191,20 @@ namespace ChaosExplorer.Gpu
         private void GlControl_Paint(object? sender, PaintEventArgs e)
         {
             // draw pointcloud
-            GL.Enable(EnableCap.ProgramPointSize);
-            GL.Enable(EnableCap.Blend);
-            GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.One);
-            GL.BlendEquation(OpenTK.Graphics.OpenGL.BlendEquationMode.FuncAdd);
-            GL.Enable(EnableCap.PointSprite);
-            GL.Clear(ClearBufferMask.ColorBufferBit);
-            GL.UseProgram(attractorProgram);
-            GL.BindVertexArray(dummyVao);
-            projectionMatrix = GetProjectionMatrix();
-            GL.UniformMatrix4(projLocation, false, ref projectionMatrix);
-            GL.DrawArrays(PrimitiveType.Points, 0, particlesCount);
+            if (!ShowFractalOnly)
+            {
+                GL.Enable(EnableCap.ProgramPointSize);
+                GL.Enable(EnableCap.Blend);
+                GL.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.One);
+                GL.BlendEquation(OpenTK.Graphics.OpenGL.BlendEquationMode.FuncAdd);
+                GL.Enable(EnableCap.PointSprite);
+                GL.Clear(ClearBufferMask.ColorBufferBit);
+                GL.UseProgram(attractorProgram);
+                GL.BindVertexArray(dummyVao);
+                projectionMatrix = GetProjectionMatrix();
+                GL.UniformMatrix4(projLocation, false, ref projectionMatrix);
+                GL.DrawArrays(PrimitiveType.Points, 0, particlesCount);
+            }
 
             // draw plot from texture
             GL.Disable(EnableCap.DepthTest);
@@ -198,7 +214,7 @@ namespace ChaosExplorer.Gpu
             GL.BindTexture(TextureTarget.Texture2D, stateTex);
             GL.Uniform1(fractalStateLocation, 0);
             GL.Uniform2(fractalOffsetLocation, new Vector2(0.0f, 0.0f));
-            var plotSize = new Vector2(0.3f, 0.3f);
+            var plotSize = ShowFractalOnly ? new Vector2(1.0f, 1.0f): new Vector2(0.3f, 0.3f);
             GL.Uniform2(fractalSizeLocation, plotSize);
             GL.DrawArrays(PrimitiveType.Triangles, 0, 6);
 
@@ -238,8 +254,7 @@ namespace ChaosExplorer.Gpu
                 if (dispatchGroupsX > maxGroupsX)
                     dispatchGroupsX = maxGroupsX;
                 GL.DispatchCompute(dispatchGroupsX, 1, 1);
-                GL.MemoryBarrier(MemoryBarrierFlags.ShaderStorageBarrierBit | MemoryBarrierFlags.ShaderImageAccessBarrierBit);//| MemoryBarrierFlags.ShaderImageAccessBarrierBit);
-                //GL.CopyImageSubData(plotTexBack, ImageTarget.Texture2D, 0, 0, 0, 0, plotTexFront, ImageTarget.Texture2D, 0, 0, 0, 0, scene.shaderConfig.plotWidth, scene.shaderConfig.plotHeight, 1);
+                GL.MemoryBarrier(MemoryBarrierFlags.ShaderStorageBarrierBit | MemoryBarrierFlags.ShaderImageAccessBarrierBit);
             }
 
             GL.Viewport(0, 0, glControl.Width, glControl.Height);
